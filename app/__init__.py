@@ -5,6 +5,7 @@ import click
 from dotenv import load_dotenv
 from flask import Flask, jsonify
 from flask_cors import CORS
+from sqlalchemy import text
 
 from .extensions import db
 
@@ -32,6 +33,11 @@ def create_app(test_config=None):
         if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
             app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {}
 
+    if not app.config["TESTING"]:
+        secret = app.config["SECRET_KEY"]
+        if len(secret) < 32 or secret in {"development-only-change-me", "replace-with-a-long-random-value"}:
+            raise RuntimeError("Set a random SECRET_KEY of at least 32 characters before production startup.")
+
     db.init_app(app)
     origins = [item.strip() for item in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if item.strip()]
     CORS(app, resources={r"/api/*": {"origins": origins}})
@@ -45,6 +51,7 @@ def create_app(test_config=None):
 
     @app.get("/api/health")
     def health():
+        db.session.execute(text("SELECT 1"))
         return jsonify(status="ok")
 
     @app.errorhandler(404)

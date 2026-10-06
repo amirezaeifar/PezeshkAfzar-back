@@ -197,13 +197,25 @@ def upload_image():
     image.stream.seek(0)
     if image_size > MAX_IMAGE_BYTES:
         return jsonify(message="حجم تصویر نباید بیشتر از ۴۰۰ کیلوبایت باشد."), 413
+    signature = image.stream.read(12)
+    image.stream.seek(0)
+    valid_image = (
+        (extension == "png" and signature.startswith(b"\x89PNG\r\n\x1a\n"))
+        or (extension in {"jpg", "jpeg"} and signature.startswith(b"\xff\xd8\xff"))
+        or (extension == "webp" and signature.startswith(b"RIFF") and signature[8:12] == b"WEBP")
+    )
+    if not valid_image:
+        return jsonify(message="محتوای فایل با فرمت تصویر انتخاب‌شده مطابقت ندارد."), 422
+
     filename = f"{uuid4().hex}.{extension}"
     upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
     upload_dir.mkdir(parents=True, exist_ok=True)
     image.save(upload_dir / filename)
-    return jsonify(url=url_for("articles.uploaded_file", filename=filename, _external=True)), 201
+    return jsonify(url=url_for("articles.uploaded_file", filename=filename)), 201
 
 
 @bp.get("/uploads/<path:filename>")
 def uploaded_file(filename):
-    return send_from_directory(current_app.config["UPLOAD_FOLDER"], filename)
+    response = send_from_directory(current_app.config["UPLOAD_FOLDER"], filename)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response

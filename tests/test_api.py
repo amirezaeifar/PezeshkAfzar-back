@@ -121,3 +121,33 @@ def test_upload_rejects_images_larger_than_400_kilobytes(client):
     )
     assert response.status_code == 413
     assert "۴۰۰" in response.get_json()["message"]
+
+
+def test_upload_rejects_disguised_non_image(client):
+    headers = login(client)
+    response = client.post(
+        "/api/admin/uploads",
+        headers=headers,
+        data={"image": (BytesIO(b"<script>alert(1)</script>"), "disguised.jpg")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 422
+
+
+def test_health_checks_database(client):
+    assert client.get("/api/health").get_json() == {"status": "ok"}
+
+def test_upload_returns_proxy_safe_relative_url(client):
+    headers = login(client)
+    response = client.post(
+        "/api/admin/uploads",
+        headers=headers,
+        data={"image": (BytesIO(b"\xff\xd8\xff\xe0sample"), "photo.jpg")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 201
+    url = response.get_json()["url"]
+    assert url.startswith("/uploads/")
+    uploaded = client.get(url)
+    assert uploaded.status_code == 200
+    assert uploaded.headers["X-Content-Type-Options"] == "nosniff"
